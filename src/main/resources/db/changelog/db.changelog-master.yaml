@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-user-credentials-table
+      author: matvey
+      changes:
+        - sqlFile:
+            path: classpath:db/changelog/001-create-user-credentials-table.sql
+  - changeSet:
+      id: create-refresh-tokens-table
+      author: matvey
+      changes:
+        - sqlFile:
+            path: classpath:db/changelog/002-create-refresh-tokens-table.sql
