@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
 import java.util.function.Function;
@@ -38,7 +39,8 @@ public class JwtUtil {
     public String generateAccessToken(UUID userId, String role) {
         return Jwts.builder()
                 .subject(userId.toString())
-                .claim("role", role)
+                .claim("role", "ROLE_" + role)
+                .id(UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
                 .signWith(getPrivateKey())
@@ -48,6 +50,7 @@ public class JwtUtil {
     public String generateRefreshToken(UUID userId) {
         return Jwts.builder()
                 .subject(userId.toString())
+                .id(UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
                 .signWith(getPrivateKey())
@@ -93,5 +96,13 @@ public class JwtUtil {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    public String getPublicKeyPem() {
+        PublicKey publicKey = getPublicKey();
+        String publicKeyEncoded = Base64.getEncoder().encodeToString(publicKey.getEncoded());
+        return "-----BEGIN PUBLIC KEY-----\n" +
+                publicKeyEncoded +
+                "\n-----END PUBLIC KEY-----";
     }
 }

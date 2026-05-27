@@ -10,10 +10,10 @@ import java.util.UUID;
 
 @Mapper(componentModel = "spring")
 public interface UserCredentialMapper {
-    
+
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "userId", source = "userId")
-    @Mapping(target = "passwordHash", source = "password")
-    @Mapping(target = "role", source = "role")
+    @Mapping(target = "passwordHash", ignore = true)
+    @Mapping(target = "role", source = "registerRequest.role")
     UserCredential toEntity(RegisterRequest registerRequest, UUID userId);
 }
