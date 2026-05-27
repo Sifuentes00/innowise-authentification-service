@@ -11,6 +11,11 @@ import com.matvey.innowiseauthentificationservice.entity.UserCredential;
 import com.matvey.innowiseauthentificationservice.mapper.UserCredentialMapper;
 import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
 import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
+import com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException;
+import com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException;
+import com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException;
+import com.matvey.innowiseauthentificationservice.exception.RefreshTokenExpiredException;
+import com.matvey.innowiseauthentificationservice.exception.UserNotFoundException;
 import com.matvey.innowiseauthentificationservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,7 +38,7 @@ public class AuthService {
     @Transactional
     public void register(RegisterRequest registerRequest, UUID userId) {
         if (userCredentialRepository.existsByEmail(registerRequest.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new EmailAlreadyExistsException("Email already exists: " + registerRequest.getEmail());
         }
 
         UserCredential userCredential = userCredentialMapper.toEntity(registerRequest, userId);
@@ -43,10 +48,10 @@ public class AuthService {
 
     public AuthResponse login(LoginRequest loginRequest) {
         UserCredential userCredential = userCredentialRepository.findByEmail(loginRequest.getEmail())
-                .orElseThrow(() -> new RuntimeException("Invalid email or password"));
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
 
         if (!passwordEncoder.matches(loginRequest.getPassword(), userCredential.getPasswordHash())) {
-            throw new RuntimeException("Invalid email or password");
+            throw new InvalidCredentialsException("Invalid email or password");
         }
 
         String accessToken = jwtUtil.generateAccessToken(userCredential.getUserId(), userCredential.getRole().name());
@@ -71,15 +76,15 @@ public class AuthService {
     @Transactional
     public AuthResponse refresh(RefreshRequest refreshRequest) {
         RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshRequest.getRefreshToken())
-                .orElseThrow(() -> new RuntimeException("Invalid refresh token"));
+                .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
 
         if (refreshToken.getExpiryDate().isBefore(LocalDateTime.now())) {
             refreshTokenRepository.delete(refreshToken);
-            throw new RuntimeException("Refresh token expired");
+            throw new RefreshTokenExpiredException("Refresh token expired");
         }
 
         UserCredential userCredential = userCredentialRepository.findByUserId(refreshToken.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         String newAccessToken = jwtUtil.generateAccessToken(userCredential.getUserId(), userCredential.getRole().name());
         String newRefreshToken = jwtUtil.generateRefreshToken(userCredential.getUserId());
