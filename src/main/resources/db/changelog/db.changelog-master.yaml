@@ -11,3 +11,9 @@ databaseChangeLog:
       changes:
         - sqlFile:
             path: classpath:db/changelog/002-create-refresh-tokens-table.sql
+  - changeSet:
+      id: alter-refresh-tokens-token-size
+      author: matvey
+      changes:
+        - sqlFile:
+            path: classpath:db/changelog/003-alter-refresh-tokens-token-size.sql

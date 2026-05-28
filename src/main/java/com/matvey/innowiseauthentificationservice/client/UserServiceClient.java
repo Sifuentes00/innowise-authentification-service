@@ -21,7 +21,6 @@ public class UserServiceClient {
     public void createUser(UUID userId, UserServiceRequest request) {
         String url = userServiceUrl + "/internal/users";
 
-        // Add userId to request
         request.setUserId(userId);
 
         HttpHeaders headers = new HttpHeaders();
