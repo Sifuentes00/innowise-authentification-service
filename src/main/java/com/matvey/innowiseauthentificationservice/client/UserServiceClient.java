@@ -15,7 +15,7 @@ public class UserServiceClient {
 
     private final RestTemplate restTemplate;
 
-    @Value("${user.service.url:http://localhost:8080}")
+    @Value("${user.service.url}")
     private String userServiceUrl;
 
     public void createUser(UUID userId, UserServiceRequest request) {
