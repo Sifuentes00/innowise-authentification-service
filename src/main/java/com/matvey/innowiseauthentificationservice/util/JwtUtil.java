@@ -16,10 +16,10 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
-    @Value("${jwt.expiration:900000}")
+    @Value("${jwt.expiration}")
     private long accessTokenExpiration;
 
-    @Value("${jwt.refresh-expiration:604800000}")
+    @Value("${jwt.refresh-expiration}")
     private long refreshTokenExpiration;
 
     private final KeyPair keyPair;
