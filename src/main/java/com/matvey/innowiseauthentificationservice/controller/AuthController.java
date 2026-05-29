@@ -2,11 +2,13 @@ package com.matvey.innowiseauthentificationservice.controller;
 
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
+import com.matvey.innowiseauthentificationservice.dto.PublicKeyResponse;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
 import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.ValidateRequest;
 import com.matvey.innowiseauthentificationservice.dto.ValidateResponse;
 import com.matvey.innowiseauthentificationservice.service.AuthService;
+import com.matvey.innowiseauthentificationservice.util.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtUtil jwtUtil;
 
     @PostMapping("/register/{userId}")
     @Operation(summary = "Register user credentials")
@@ -53,5 +56,16 @@ public class AuthController {
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest refreshRequest) {
         AuthResponse authResponse = authService.refresh(refreshRequest);
         return ResponseEntity.ok(authResponse);
+    }
+
+    @GetMapping("/public-key")
+    @Operation(summary = "Get public key for JWT validation")
+    public ResponseEntity<PublicKeyResponse> getPublicKey() {
+        String publicKeyPem = jwtUtil.getPublicKeyPem();
+        PublicKeyResponse response = PublicKeyResponse.builder()
+                .publicKey(publicKeyPem)
+                .algorithm("RS256")
+                .build();
+        return ResponseEntity.ok(response);
     }
 }

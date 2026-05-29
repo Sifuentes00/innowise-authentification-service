@@ -1,9 +1,11 @@
 package com.matvey.innowiseauthentificationservice.service;
 
+import com.matvey.innowiseauthentificationservice.client.UserServiceClient;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
 import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
+import com.matvey.innowiseauthentificationservice.dto.UserServiceRequest;
 import com.matvey.innowiseauthentificationservice.dto.ValidateRequest;
 import com.matvey.innowiseauthentificationservice.dto.ValidateResponse;
 import com.matvey.innowiseauthentificationservice.entity.RefreshToken;
@@ -34,6 +36,7 @@ public class AuthService {
     private final UserCredentialMapper userCredentialMapper;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final UserServiceClient userServiceClient;
 
     @Transactional
     public void register(RegisterRequest registerRequest, UUID userId) {
@@ -44,6 +47,15 @@ public class AuthService {
         UserCredential userCredential = userCredentialMapper.toEntity(registerRequest, userId);
         userCredential.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
         userCredentialRepository.save(userCredential);
+
+        UserServiceRequest userServiceRequest = UserServiceRequest.builder()
+                .name(registerRequest.getName())
+                .surname(registerRequest.getSurname())
+                .birthDate(registerRequest.getBirthDate())
+                .email(registerRequest.getEmail())
+                .build();
+
+        userServiceClient.createUser(userId, userServiceRequest);
     }
 
     public AuthResponse login(LoginRequest loginRequest) {
