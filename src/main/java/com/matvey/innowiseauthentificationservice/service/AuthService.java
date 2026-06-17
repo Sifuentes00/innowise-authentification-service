@@ -1,6 +1,7 @@
 package com.matvey.innowiseauthentificationservice.service;
 
 import com.matvey.innowiseauthentificationservice.client.UserServiceClient;
+import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
@@ -13,6 +14,7 @@ import com.matvey.innowiseauthentificationservice.entity.UserCredential;
 import com.matvey.innowiseauthentificationservice.mapper.UserCredentialMapper;
 import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
 import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
+import com.matvey.innowiseauthentificationservice.enums.RoleType;
 import com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException;
@@ -46,6 +48,7 @@ public class AuthService {
 
         UserCredential userCredential = userCredentialMapper.toEntity(registerRequest, userId);
         userCredential.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
+        userCredential.setRole(RoleType.USER);
         userCredentialRepository.save(userCredential);
 
         UserServiceRequest userServiceRequest = UserServiceRequest.builder()
@@ -66,6 +69,8 @@ public class AuthService {
             throw new InvalidCredentialsException("Invalid email or password");
         }
 
+        refreshTokenRepository.deleteByUserId(userCredential.getUserId());
+
         String accessToken = jwtUtil.generateAccessToken(userCredential.getUserId(), userCredential.getRole().name());
         String refreshToken = jwtUtil.generateRefreshToken(userCredential.getUserId());
 
@@ -79,6 +84,11 @@ public class AuthService {
             return new ValidateResponse(false, null, null);
         }
 
+        String tokenType = jwtUtil.extractTokenType(validateRequest.getToken());
+        if ("refresh".equals(tokenType)) {
+            return new ValidateResponse(false, null, null);
+        }
+
         UUID userId = jwtUtil.extractUserId(validateRequest.getToken());
         String role = jwtUtil.extractRole(validateRequest.getToken());
 
@@ -87,8 +97,13 @@ public class AuthService {
 
     @Transactional
     public AuthResponse refresh(RefreshRequest refreshRequest) {
-        RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshRequest.getRefreshToken())
+        String tokenHash = hashToken(refreshRequest.getRefreshToken());
+        RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
+
+        if (!passwordEncoder.matches(refreshRequest.getRefreshToken(), refreshToken.getToken())) {
+            throw new InvalidRefreshTokenException("Invalid refresh token");
+        }
 
         if (refreshToken.getExpiryDate().isBefore(LocalDateTime.now())) {
             refreshTokenRepository.delete(refreshToken);
@@ -111,8 +126,36 @@ public class AuthService {
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUserId(userId);
         refreshToken.setToken(token);
-        refreshToken.setExpiryDate(LocalDateTime.now().plusDays(7));
+        refreshToken.setTokenHash(hashToken(token));
+        refreshToken.setExpiryDate(LocalDateTime.now().plusSeconds(jwtUtil.getRefreshTokenExpiration() / 1000));
         refreshToken.setCreatedAt(LocalDateTime.now());
         refreshTokenRepository.save(refreshToken);
+    }
+
+    private String hashToken(String token) {
+        return passwordEncoder.encode(token);
+    }
+
+    @Transactional
+    public void registerAdmin(AdminRegisterRequest adminRegisterRequest, UUID userId) {
+        if (userCredentialRepository.existsByEmail(adminRegisterRequest.getEmail())) {
+            throw new EmailAlreadyExistsException("Email already exists: " + adminRegisterRequest.getEmail());
+        }
+
+        UserCredential userCredential = new UserCredential();
+        userCredential.setUserId(userId);
+        userCredential.setEmail(adminRegisterRequest.getEmail());
+        userCredential.setPasswordHash(passwordEncoder.encode(adminRegisterRequest.getPassword()));
+        userCredential.setRole(adminRegisterRequest.getRole());
+        userCredentialRepository.save(userCredential);
+
+        UserServiceRequest userServiceRequest = UserServiceRequest.builder()
+                .name(adminRegisterRequest.getName())
+                .surname(adminRegisterRequest.getSurname())
+                .birthDate(adminRegisterRequest.getBirthDate())
+                .email(adminRegisterRequest.getEmail())
+                .build();
+
+        userServiceClient.createUser(userId, userServiceRequest);
     }
 }

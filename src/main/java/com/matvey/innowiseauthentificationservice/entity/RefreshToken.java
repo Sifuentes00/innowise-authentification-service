@@ -25,6 +25,9 @@ public class RefreshToken {
     @Column(name = "token", nullable = false, unique = true)
     private String token;
 
+    @Column(name = "token_hash", nullable = false, unique = true)
+    private String tokenHash;
+
     @Column(name = "expiry_date", nullable = false)
     private LocalDateTime expiryDate;
 

@@ -1,5 +1,6 @@
 package com.matvey.innowiseauthentificationservice.controller;
 
+import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.PublicKeyResponse;
@@ -15,6 +16,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -67,5 +69,15 @@ public class AuthController {
                 .algorithm("RS256")
                 .build();
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/admin/register/{userId}")
+    @Operation(summary = "Register admin user credentials")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> registerAdmin(
+            @PathVariable UUID userId,
+            @Valid @RequestBody AdminRegisterRequest adminRegisterRequest) {
+        authService.registerAdmin(adminRegisterRequest, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 }
