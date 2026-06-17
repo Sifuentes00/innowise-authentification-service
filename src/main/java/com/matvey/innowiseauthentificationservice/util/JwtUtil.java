@@ -2,6 +2,7 @@ package com.matvey.innowiseauthentificationservice.util;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -32,9 +33,10 @@ public class JwtUtil {
     @Value("${jwt.keys-path:/app/keys/}")
     private String keysPath;
 
-    private final KeyPair keyPair;
+    private KeyPair keyPair;
 
-    public JwtUtil() {
+    @PostConstruct
+    public void init() {
         this.keyPair = loadOrGenerateKeys();
     }
 

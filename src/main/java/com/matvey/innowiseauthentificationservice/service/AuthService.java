@@ -23,6 +23,10 @@ import com.matvey.innowiseauthentificationservice.exception.UserNotFoundExceptio
 import com.matvey.innowiseauthentificationservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +65,7 @@ public class AuthService {
         userServiceClient.createUser(userId, userServiceRequest);
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest loginRequest) {
         UserCredential userCredential = userCredentialRepository.findByEmail(loginRequest.getEmail())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
@@ -101,10 +106,6 @@ public class AuthService {
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
 
-        if (!passwordEncoder.matches(refreshRequest.getRefreshToken(), refreshToken.getToken())) {
-            throw new InvalidRefreshTokenException("Invalid refresh token");
-        }
-
         if (refreshToken.getExpiryDate().isBefore(LocalDateTime.now())) {
             refreshTokenRepository.delete(refreshToken);
             throw new RefreshTokenExpiredException("Refresh token expired");
@@ -133,7 +134,13 @@ public class AuthService {
     }
 
     private String hashToken(String token) {
-        return passwordEncoder.encode(token);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes());
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Failed to hash token", e);
+        }
     }
 
     @Transactional
