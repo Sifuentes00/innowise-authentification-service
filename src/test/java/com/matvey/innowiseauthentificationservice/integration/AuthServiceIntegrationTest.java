@@ -44,7 +44,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "user.service.url=http://localhost:8080",
         "cors.allowed-origins=http://localhost:8080",
         "jwt.expiration=900000",
-        "jwt.refresh-expiration=604800000"
+        "jwt.refresh-expiration=604800000",
+        "jwt.keys-path=/tmp/test-keys/"
 })
 class AuthServiceIntegrationTest {
 
@@ -91,7 +92,6 @@ class AuthServiceIntegrationTest {
         request.setBirthDate(LocalDate.of(1990, 1, 1));
         request.setEmail("test@example.com");
         request.setPassword("password123");
-        request.setRole(com.matvey.innowiseauthentificationservice.enums.RoleType.USER);
 
         mockMvc.perform(post("/api/auth/register/" + userId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -112,7 +112,6 @@ class AuthServiceIntegrationTest {
         registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
         registerRequest.setEmail("test@example.com");
         registerRequest.setPassword("password123");
-        registerRequest.setRole(com.matvey.innowiseauthentificationservice.enums.RoleType.USER);
 
         mockMvc.perform(post("/api/auth/register/" + userId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -145,7 +144,6 @@ class AuthServiceIntegrationTest {
         registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
         registerRequest.setEmail("test@example.com");
         registerRequest.setPassword("password123");
-        registerRequest.setRole(com.matvey.innowiseauthentificationservice.enums.RoleType.USER);
 
         mockMvc.perform(post("/api/auth/register/" + userId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -186,7 +184,6 @@ class AuthServiceIntegrationTest {
         registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
         registerRequest.setEmail(uniqueEmail);
         registerRequest.setPassword("password123");
-        registerRequest.setRole(com.matvey.innowiseauthentificationservice.enums.RoleType.USER);
 
         mockMvc.perform(post("/api/auth/register/" + userId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -237,7 +234,6 @@ class AuthServiceIntegrationTest {
         request.setBirthDate(LocalDate.of(1990, 1, 1));
         request.setEmail("test@example.com");
         request.setPassword("password123");
-        request.setRole(com.matvey.innowiseauthentificationservice.enums.RoleType.USER);
 
         mockMvc.perform(post("/api/auth/register/" + userId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -261,5 +257,92 @@ class AuthServiceIntegrationTest {
                         .content(objectMapper.writeValueAsString(validateRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(false));
+    }
+
+    @Test
+    void testLoginRevokesOldRefreshTokens() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String uniqueEmail = "revoke" + System.currentTimeMillis() + "@example.com";
+        RegisterRequest registerRequest = new RegisterRequest();
+        registerRequest.setName("Test");
+        registerRequest.setSurname("User");
+        registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
+        registerRequest.setEmail(uniqueEmail);
+        registerRequest.setPassword("password123");
+
+        mockMvc.perform(post("/api/auth/register/" + userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerRequest)))
+                .andExpect(status().isCreated());
+
+        LoginRequest loginRequest1 = new LoginRequest();
+        loginRequest1.setEmail(uniqueEmail);
+        loginRequest1.setPassword("password123");
+
+        MvcResult loginResult1 = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest1)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AuthResponse loginResponse1 = objectMapper.readValue(loginResult1.getResponse().getContentAsString(), AuthResponse.class);
+        String firstRefreshToken = loginResponse1.getRefreshToken();
+
+        LoginRequest loginRequest2 = new LoginRequest();
+        loginRequest2.setEmail(uniqueEmail);
+        loginRequest2.setPassword("password123");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest2)))
+                .andExpect(status().isOk());
+
+        RefreshRequest refreshRequest = new RefreshRequest();
+        refreshRequest.setRefreshToken(firstRefreshToken);
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(refreshRequest)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void testValidateRejectsRefreshTokens() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String uniqueEmail = "refreshvalidate" + System.currentTimeMillis() + "@example.com";
+        RegisterRequest registerRequest = new RegisterRequest();
+        registerRequest.setName("Test");
+        registerRequest.setSurname("User");
+        registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
+        registerRequest.setEmail(uniqueEmail);
+        registerRequest.setPassword("password123");
+
+        mockMvc.perform(post("/api/auth/register/" + userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerRequest)))
+                .andExpect(status().isCreated());
+
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setEmail(uniqueEmail);
+        loginRequest.setPassword("password123");
+
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AuthResponse loginResponse = objectMapper.readValue(loginResult.getResponse().getContentAsString(), AuthResponse.class);
+
+        ValidateRequest validateRequest = new ValidateRequest();
+        validateRequest.setToken(loginResponse.getRefreshToken());
+
+        mockMvc.perform(post("/api/auth/validate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validateRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(false))
+                .andExpect(jsonPath("$.userId").doesNotExist())
+                .andExpect(jsonPath("$.role").doesNotExist());
     }
 }

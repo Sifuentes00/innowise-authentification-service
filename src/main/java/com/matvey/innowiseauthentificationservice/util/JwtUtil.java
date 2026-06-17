@@ -2,17 +2,25 @@ package com.matvey.innowiseauthentificationservice.util;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.security.KeyPair;
-import java.security.PrivateKey;
-import java.security.PublicKey;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.*;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
 import java.util.function.Function;
 
+@Getter
 @Component
 public class JwtUtil {
 
@@ -22,10 +30,82 @@ public class JwtUtil {
     @Value("${jwt.refresh-expiration}")
     private long refreshTokenExpiration;
 
-    private final KeyPair keyPair;
+    @Value("${jwt.keys-path:/app/keys/}")
+    private String keysPath;
 
-    public JwtUtil() {
-        this.keyPair = Keys.keyPairFor(SignatureAlgorithm.RS256);
+    private KeyPair keyPair;
+
+    @PostConstruct
+    public void init() {
+        this.keyPair = loadOrGenerateKeys();
+    }
+
+    private KeyPair loadOrGenerateKeys() {
+        try {
+            Path keysDir = Paths.get(keysPath);
+            if (!Files.exists(keysDir)) {
+                Files.createDirectories(keysDir);
+            }
+
+            Path privateKeyPath = keysDir.resolve("private.key");
+            Path publicKeyPath = keysDir.resolve("public.key");
+
+            if (Files.exists(privateKeyPath) && Files.exists(publicKeyPath)) {
+                try {
+                    return loadKeysFromFile(privateKeyPath, publicKeyPath);
+                } catch (Exception e) {
+                    KeyPair keyPair = Keys.keyPairFor(SignatureAlgorithm.RS256);
+                    saveKeysToFile(keyPair, privateKeyPath, publicKeyPath);
+                    return keyPair;
+                }
+            } else {
+                KeyPair keyPair = Keys.keyPairFor(SignatureAlgorithm.RS256);
+                saveKeysToFile(keyPair, privateKeyPath, publicKeyPath);
+                return keyPair;
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load or generate keys", e);
+        }
+    }
+
+    private KeyPair loadKeysFromFile(Path privateKeyPath, Path publicKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+        String privateKeyPem = new String(Files.readAllBytes(privateKeyPath))
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replaceAll("\\s", "");
+
+        String publicKeyPem = new String(Files.readAllBytes(publicKeyPath))
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s", "");
+
+        byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyPem);
+        PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+        PrivateKey privateKey = keyFactory.generatePrivate(privateKeySpec);
+
+        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyPem);
+        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
+        PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+
+        return new KeyPair(publicKey, privateKey);
+    }
+
+    private void saveKeysToFile(KeyPair keyPair, Path privateKeyPath, Path publicKeyPath) throws IOException {
+        byte[] privateKeyBytes = keyPair.getPrivate().getEncoded();
+        byte[] publicKeyBytes = keyPair.getPublic().getEncoded();
+
+        String privateKeyPem = "-----BEGIN PRIVATE KEY-----\n" +
+                Base64.getEncoder().encodeToString(privateKeyBytes) +
+                "\n-----END PRIVATE KEY-----";
+
+        String publicKeyPem = "-----BEGIN PUBLIC KEY-----\n" +
+                Base64.getEncoder().encodeToString(publicKeyBytes) +
+                "\n-----END PUBLIC KEY-----";
+
+        Files.write(privateKeyPath, privateKeyPem.getBytes());
+        Files.write(publicKeyPath, publicKeyPem.getBytes());
     }
 
     public PublicKey getPublicKey() {
@@ -40,6 +120,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(userId.toString())
                 .claim("role", "ROLE_" + role)
+                .claim("token-type", "access")
                 .id(UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
@@ -50,6 +131,7 @@ public class JwtUtil {
     public String generateRefreshToken(UUID userId) {
         return Jwts.builder()
                 .subject(userId.toString())
+                .claim("token-type", "refresh")
                 .id(UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
@@ -63,6 +145,10 @@ public class JwtUtil {
 
     public String extractRole(String token) {
         return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
+    public String extractTokenType(String token) {
+        return extractClaim(token, claims -> claims.get("token-type", String.class));
     }
 
     public boolean isTokenExpired(String token) {

@@ -1,21 +1,32 @@
 package com.matvey.innowiseauthentificationservice.util;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "jwt.keys-path=/tmp/test-keys/"
+})
 @Testcontainers
 class JwtUtilTest {
 
@@ -32,8 +43,26 @@ class JwtUtilTest {
         registry.add("spring.datasource.password", postgres::getPassword);
     }
 
+    @Value("${jwt.keys-path}")
+    private String keysPath;
+
     @Autowired
     private JwtUtil jwtUtil;
+
+    @AfterEach
+    void cleanupKeys() throws IOException {
+        Path keysDir = Paths.get(keysPath);
+        if (Files.exists(keysDir)) {
+            Files.walk(keysDir)
+                    .sorted((a, b) -> -a.compareTo(b))
+                    .forEach(path -> {
+                        try {
+                            Files.delete(path);
+                        } catch (IOException e) {
+                        }
+                    });
+        }
+    }
 
     @Test
     void generateAccessToken_ShouldReturnValidToken() {
@@ -136,5 +165,22 @@ class JwtUtilTest {
         assertFalse(publicKeyPem.isEmpty());
         assertTrue(publicKeyPem.contains("-----BEGIN PUBLIC KEY-----"));
         assertTrue(publicKeyPem.contains("-----END PUBLIC KEY-----"));
+    }
+
+    @Test
+    void keyPersistence_ShouldLoadSameKeysAfterRestart() {
+        UUID userId = UUID.randomUUID();
+        String token1 = jwtUtil.generateAccessToken(userId, "USER");
+        String publicKeyPem1 = jwtUtil.getPublicKeyPem();
+
+        String token2 = jwtUtil.generateAccessToken(userId, "USER");
+        String publicKeyPem2 = jwtUtil.getPublicKeyPem();
+
+        assertEquals(publicKeyPem1, publicKeyPem2);
+
+        assertNotEquals(token1, token2);
+
+        assertTrue(jwtUtil.validateToken(token1));
+        assertTrue(jwtUtil.validateToken(token2));
     }
 }

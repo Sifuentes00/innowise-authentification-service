@@ -14,6 +14,6 @@ public interface UserCredentialMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "userId", source = "userId")
     @Mapping(target = "passwordHash", ignore = true)
-    @Mapping(target = "role", source = "registerRequest.role")
+    @Mapping(target = "role", ignore = true)
     UserCredential toEntity(RegisterRequest registerRequest, UUID userId);
 }

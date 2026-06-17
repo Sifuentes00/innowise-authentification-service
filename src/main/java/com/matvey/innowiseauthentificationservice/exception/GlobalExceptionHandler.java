@@ -125,7 +125,7 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .status(HttpStatus.UNAUTHORIZED.value())
                 .error("Unauthorized")
-                .message("Invalid JWT token: " + ex.getMessage())
+                .message("Invalid or expired token")
                 .timestamp(LocalDateTime.now())
                 .build();
         return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
@@ -201,25 +201,13 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    @ExceptionHandler(NullPointerException.class)
-    public ResponseEntity<ErrorResponse> handleNullPointerException(
-            NullPointerException ex, WebRequest request) {
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .error("Internal Server Error")
-                .message("Null pointer exception occurred")
-                .timestamp(LocalDateTime.now())
-                .build();
-        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntimeException(
             RuntimeException ex, WebRequest request) {
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error("Internal Server Error")
-                .message(ex.getMessage())
+                .message("Internal server error")
                 .timestamp(LocalDateTime.now())
                 .build();
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
