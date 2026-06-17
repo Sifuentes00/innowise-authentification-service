@@ -39,14 +39,4 @@ public class UserServiceClient {
             throw new RuntimeException("Failed to create user in User Service. Status: " + response.getStatusCode());
         }
     }
-
-    public void checkUserExists(UUID userId) {
-        String url = userServiceUrl + "/internal/users/" + userId;
-
-        ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
-
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("User not found in User Service");
-        }
-    }
 }
