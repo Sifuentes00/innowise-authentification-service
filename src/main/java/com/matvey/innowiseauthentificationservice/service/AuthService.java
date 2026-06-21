@@ -1,16 +1,21 @@
 package com.matvey.innowiseauthentificationservice.service;
 
+import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
+import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
 import com.matvey.innowiseauthentificationservice.entity.RefreshToken;
 import com.matvey.innowiseauthentificationservice.entity.UserCredential;
-import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
-import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
+import com.matvey.innowiseauthentificationservice.enums.RoleType;
+import com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException;
 import com.matvey.innowiseauthentificationservice.exception.RefreshTokenExpiredException;
 import com.matvey.innowiseauthentificationservice.exception.UserNotFoundException;
+import com.matvey.innowiseauthentificationservice.mapper.UserCredentialMapper;
+import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
+import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
 import com.matvey.innowiseauthentificationservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,6 +35,7 @@ public class AuthService {
 
     private final UserCredentialRepository userCredentialRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserCredentialMapper userCredentialMapper;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
 
@@ -93,5 +99,35 @@ public class AuthService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("Failed to hash token", e);
         }
+    }
+
+    @Transactional
+    public void createCredentials(RegisterRequest request, UUID userId) {
+        if (userCredentialRepository.existsByEmail(request.getEmail())) {
+            throw new EmailAlreadyExistsException("Email already exists: " + request.getEmail());
+        }
+        UserCredential userCredential = userCredentialMapper.toEntity(request, userId);
+        userCredential.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        userCredential.setRole(RoleType.USER);
+        userCredentialRepository.save(userCredential);
+    }
+
+    @Transactional
+    public void createAdminCredentials(AdminRegisterRequest request, UUID userId) {
+        if (userCredentialRepository.existsByEmail(request.getEmail())) {
+            throw new EmailAlreadyExistsException("Email already exists: " + request.getEmail());
+        }
+        UserCredential userCredential = new UserCredential();
+        userCredential.setUserId(userId);
+        userCredential.setEmail(request.getEmail());
+        userCredential.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        userCredential.setRole(request.getRole());
+        userCredentialRepository.save(userCredential);
+    }
+
+    @Transactional
+    public void deleteByUserId(UUID userId) {
+        userCredentialRepository.deleteByUserId(userId);
+        refreshTokenRepository.deleteByUserId(userId);
     }
 }
