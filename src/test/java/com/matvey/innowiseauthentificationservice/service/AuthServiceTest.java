@@ -1,11 +1,10 @@
 package com.matvey.innowiseauthentificationservice.service;
 
+import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
 import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateResponse;
 import com.matvey.innowiseauthentificationservice.entity.UserCredential;
 import com.matvey.innowiseauthentificationservice.enums.RoleType;
 import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
@@ -19,7 +18,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -81,7 +79,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void register_ShouldCreateUserCredential() {
+    void createCredentials_ShouldCreateUserCredential() {
         RegisterRequest request = new RegisterRequest();
         request.setName("Test");
         request.setSurname("User");
@@ -89,7 +87,7 @@ class AuthServiceTest {
         request.setEmail("test@example.com");
         request.setPassword("password123");
 
-        authService.register(request, testUserId);
+        authService.createCredentials(request, testUserId);
 
         Optional<UserCredential> user = userCredentialRepository.findByEmail("test@example.com");
         assertTrue(user.isPresent());
@@ -101,19 +99,76 @@ class AuthServiceTest {
     }
 
     @Test
-    void register_ShouldCreateUserWithUserRole() {
+    void createCredentials_ShouldThrowException_WhenEmailExists() {
         RegisterRequest request = new RegisterRequest();
+        request.setName("Test");
+        request.setSurname("User");
+        request.setBirthDate(LocalDate.of(1990, 1, 1));
+        request.setEmail("test@example.com");
+        request.setPassword("password123");
+
+        authService.createCredentials(request, testUserId);
+
+        assertThrows(com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException.class,
+                () -> authService.createCredentials(request, UUID.randomUUID()));
+    }
+
+    @Test
+    void createAdminCredentials_ShouldCreateAdminCredential() {
+        AdminRegisterRequest request = new AdminRegisterRequest();
         request.setName("Admin");
         request.setSurname("User");
         request.setBirthDate(LocalDate.of(1990, 1, 1));
         request.setEmail("admin@example.com");
         request.setPassword("admin123");
+        request.setRole(RoleType.ADMIN);
 
-        authService.register(request, testUserId);
+        authService.createAdminCredentials(request, testUserId);
 
         Optional<UserCredential> user = userCredentialRepository.findByEmail("admin@example.com");
         assertTrue(user.isPresent());
-        assertEquals(RoleType.USER, user.get().getRole());
+        assertEquals(testUserId, user.get().getUserId());
+        assertEquals("admin@example.com", user.get().getEmail());
+        assertNotNull(user.get().getPasswordHash());
+        assertNotEquals("admin123", user.get().getPasswordHash());
+        assertEquals(RoleType.ADMIN, user.get().getRole());
+    }
+
+    @Test
+    void createAdminCredentials_ShouldThrowException_WhenEmailExists() {
+        AdminRegisterRequest request = new AdminRegisterRequest();
+        request.setName("Admin");
+        request.setSurname("User");
+        request.setBirthDate(LocalDate.of(1990, 1, 1));
+        request.setEmail("admin@example.com");
+        request.setPassword("admin123");
+        request.setRole(RoleType.ADMIN);
+
+        authService.createAdminCredentials(request, testUserId);
+
+        assertThrows(com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException.class,
+                () -> authService.createAdminCredentials(request, UUID.randomUUID()));
+    }
+
+    @Test
+    void deleteByUserId_ShouldDeleteCredentialsAndRefreshTokens() {
+        RegisterRequest request = new RegisterRequest();
+        request.setName("Test");
+        request.setSurname("User");
+        request.setBirthDate(LocalDate.of(1990, 1, 1));
+        request.setEmail("delete@example.com");
+        request.setPassword("password123");
+
+        authService.createCredentials(request, testUserId);
+
+        authService.login(new LoginRequest("delete@example.com", "password123"));
+
+        assertTrue(userCredentialRepository.findByEmail("delete@example.com").isPresent());
+
+        authService.deleteByUserId(testUserId);
+
+        assertFalse(userCredentialRepository.findByEmail("delete@example.com").isPresent());
+        assertTrue(refreshTokenRepository.findByUserId(testUserId).isEmpty());
     }
 
     @Test
@@ -125,7 +180,7 @@ class AuthServiceTest {
         registerRequest.setEmail("login@example.com");
         registerRequest.setPassword("password123");
 
-        authService.register(registerRequest, testUserId);
+        authService.createCredentials(registerRequest, testUserId);
 
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setEmail("login@example.com");
@@ -140,27 +195,17 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_ShouldReturnUserToken() {
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setName("Admin");
-        registerRequest.setSurname("User");
-        registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
-        registerRequest.setEmail("adminlogin@example.com");
-        registerRequest.setPassword("admin123");
-
-        authService.register(registerRequest, testUserId);
-
+    void login_ShouldFail_WhenInvalidEmail() {
         LoginRequest loginRequest = new LoginRequest();
-        loginRequest.setEmail("adminlogin@example.com");
-        loginRequest.setPassword("admin123");
+        loginRequest.setEmail("nonexistent@example.com");
+        loginRequest.setPassword("password123");
 
-        AuthResponse response = authService.login(loginRequest);
-
-        assertEquals("ROLE_USER", jwtUtil.extractRole(response.getAccessToken()));
+        assertThrows(com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException.class,
+                () -> authService.login(loginRequest));
     }
 
     @Test
-    void login_ShouldFail_WhenInvalidCredentials() {
+    void login_ShouldFail_WhenInvalidPassword() {
         RegisterRequest registerRequest = new RegisterRequest();
         registerRequest.setName("Test");
         registerRequest.setSurname("User");
@@ -168,40 +213,46 @@ class AuthServiceTest {
         registerRequest.setEmail("invalid@example.com");
         registerRequest.setPassword("password123");
 
-        authService.register(registerRequest, testUserId);
+        authService.createCredentials(registerRequest, testUserId);
 
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setEmail("invalid@example.com");
         loginRequest.setPassword("wrongpassword");
 
-        assertThrows(RuntimeException.class, () -> authService.login(loginRequest));
+        assertThrows(com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException.class,
+                () -> authService.login(loginRequest));
     }
 
     @Test
-    void validate_ShouldReturnTrue_WhenValidToken() {
+    @Transactional
+    void login_ShouldRevokeOldRefreshTokens() {
         RegisterRequest registerRequest = new RegisterRequest();
         registerRequest.setName("Test");
         registerRequest.setSurname("User");
         registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
-        registerRequest.setEmail("validate@example.com");
+        registerRequest.setEmail("revoke@example.com");
         registerRequest.setPassword("password123");
 
-        authService.register(registerRequest, testUserId);
+        authService.createCredentials(registerRequest, testUserId);
 
-        LoginRequest loginRequest = new LoginRequest();
-        loginRequest.setEmail("validate@example.com");
-        loginRequest.setPassword("password123");
+        LoginRequest loginRequest1 = new LoginRequest();
+        loginRequest1.setEmail("revoke@example.com");
+        loginRequest1.setPassword("password123");
 
-        AuthResponse authResponse = authService.login(loginRequest);
+        AuthResponse authResponse1 = authService.login(loginRequest1);
+        String firstRefreshToken = authResponse1.getRefreshToken();
 
-        ValidateRequest validateRequest = new ValidateRequest();
-        validateRequest.setToken(authResponse.getAccessToken());
+        LoginRequest loginRequest2 = new LoginRequest();
+        loginRequest2.setEmail("revoke@example.com");
+        loginRequest2.setPassword("password123");
 
-        ValidateResponse response = authService.validate(validateRequest);
+        authService.login(loginRequest2);
 
-        assertTrue(response.isValid());
-        assertEquals(testUserId.toString(), response.getUserId());
-        assertEquals("ROLE_USER", response.getRole());
+        RefreshRequest refreshRequest = new RefreshRequest();
+        refreshRequest.setRefreshToken(firstRefreshToken);
+
+        assertThrows(com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException.class,
+                () -> authService.refresh(refreshRequest));
     }
 
     @Test
@@ -213,7 +264,7 @@ class AuthServiceTest {
         registerRequest.setEmail("refresh@example.com");
         registerRequest.setPassword("password123");
 
-        authService.register(registerRequest, testUserId);
+        authService.createCredentials(registerRequest, testUserId);
 
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setEmail("refresh@example.com");
@@ -233,62 +284,12 @@ class AuthServiceTest {
     }
 
     @Test
-    @Transactional
-    void login_ShouldRevokeOldRefreshTokens() {
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setName("Test");
-        registerRequest.setSurname("User");
-        registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
-        registerRequest.setEmail("revoke@example.com");
-        registerRequest.setPassword("password123");
-
-        authService.register(registerRequest, testUserId);
-
-        LoginRequest loginRequest1 = new LoginRequest();
-        loginRequest1.setEmail("revoke@example.com");
-        loginRequest1.setPassword("password123");
-
-        AuthResponse authResponse1 = authService.login(loginRequest1);
-        String firstRefreshToken = authResponse1.getRefreshToken();
-
-        LoginRequest loginRequest2 = new LoginRequest();
-        loginRequest2.setEmail("revoke@example.com");
-        loginRequest2.setPassword("password123");
-
-        AuthResponse authResponse2 = authService.login(loginRequest2);
-
+    void refresh_ShouldFail_WhenInvalidRefreshToken() {
         RefreshRequest refreshRequest = new RefreshRequest();
-        refreshRequest.setRefreshToken(firstRefreshToken);
+        refreshRequest.setRefreshToken("invalid.token.here");
 
         assertThrows(com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException.class,
                 () -> authService.refresh(refreshRequest));
-    }
-
-    @Test
-    void validate_ShouldRejectRefreshTokens() {
-        RegisterRequest registerRequest = new RegisterRequest();
-        registerRequest.setName("Test");
-        registerRequest.setSurname("User");
-        registerRequest.setBirthDate(LocalDate.of(1990, 1, 1));
-        registerRequest.setEmail("refreshvalidate@example.com");
-        registerRequest.setPassword("password123");
-
-        authService.register(registerRequest, testUserId);
-
-        LoginRequest loginRequest = new LoginRequest();
-        loginRequest.setEmail("refreshvalidate@example.com");
-        loginRequest.setPassword("password123");
-
-        AuthResponse authResponse = authService.login(loginRequest);
-
-        ValidateRequest validateRequest = new ValidateRequest();
-        validateRequest.setToken(authResponse.getRefreshToken());
-
-        ValidateResponse response = authService.validate(validateRequest);
-
-        assertFalse(response.isValid());
-        assertNull(response.getUserId());
-        assertNull(response.getRole());
     }
 
 }
