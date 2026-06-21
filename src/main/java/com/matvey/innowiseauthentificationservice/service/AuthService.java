@@ -1,21 +1,12 @@
 package com.matvey.innowiseauthentificationservice.service;
 
-import com.matvey.innowiseauthentificationservice.client.UserServiceClient;
-import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
-import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
-import com.matvey.innowiseauthentificationservice.dto.UserServiceRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateResponse;
 import com.matvey.innowiseauthentificationservice.entity.RefreshToken;
 import com.matvey.innowiseauthentificationservice.entity.UserCredential;
-import com.matvey.innowiseauthentificationservice.mapper.UserCredentialMapper;
 import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
 import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
-import com.matvey.innowiseauthentificationservice.enums.RoleType;
-import com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException;
 import com.matvey.innowiseauthentificationservice.exception.RefreshTokenExpiredException;
@@ -39,31 +30,8 @@ public class AuthService {
 
     private final UserCredentialRepository userCredentialRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final UserCredentialMapper userCredentialMapper;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
-    private final UserServiceClient userServiceClient;
-
-    @Transactional
-    public void register(RegisterRequest registerRequest, UUID userId) {
-        if (userCredentialRepository.existsByEmail(registerRequest.getEmail())) {
-            throw new EmailAlreadyExistsException("Email already exists: " + registerRequest.getEmail());
-        }
-
-        UserCredential userCredential = userCredentialMapper.toEntity(registerRequest, userId);
-        userCredential.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
-        userCredential.setRole(RoleType.USER);
-        userCredentialRepository.save(userCredential);
-
-        UserServiceRequest userServiceRequest = UserServiceRequest.builder()
-                .name(registerRequest.getName())
-                .surname(registerRequest.getSurname())
-                .birthDate(registerRequest.getBirthDate())
-                .email(registerRequest.getEmail())
-                .build();
-
-        userServiceClient.createUser(userId, userServiceRequest);
-    }
 
     @Transactional
     public AuthResponse login(LoginRequest loginRequest) {
@@ -82,22 +50,6 @@ public class AuthService {
         saveRefreshToken(userCredential.getUserId(), refreshToken);
 
         return new AuthResponse(accessToken, refreshToken);
-    }
-
-    public ValidateResponse validate(ValidateRequest validateRequest) {
-        if (!jwtUtil.validateToken(validateRequest.getToken())) {
-            return new ValidateResponse(false, null, null);
-        }
-
-        String tokenType = jwtUtil.extractTokenType(validateRequest.getToken());
-        if ("refresh".equals(tokenType)) {
-            return new ValidateResponse(false, null, null);
-        }
-
-        UUID userId = jwtUtil.extractUserId(validateRequest.getToken());
-        String role = jwtUtil.extractRole(validateRequest.getToken());
-
-        return new ValidateResponse(true, userId.toString(), role);
     }
 
     @Transactional
@@ -141,28 +93,5 @@ public class AuthService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("Failed to hash token", e);
         }
-    }
-
-    @Transactional
-    public void registerAdmin(AdminRegisterRequest adminRegisterRequest, UUID userId) {
-        if (userCredentialRepository.existsByEmail(adminRegisterRequest.getEmail())) {
-            throw new EmailAlreadyExistsException("Email already exists: " + adminRegisterRequest.getEmail());
-        }
-
-        UserCredential userCredential = new UserCredential();
-        userCredential.setUserId(userId);
-        userCredential.setEmail(adminRegisterRequest.getEmail());
-        userCredential.setPasswordHash(passwordEncoder.encode(adminRegisterRequest.getPassword()));
-        userCredential.setRole(adminRegisterRequest.getRole());
-        userCredentialRepository.save(userCredential);
-
-        UserServiceRequest userServiceRequest = UserServiceRequest.builder()
-                .name(adminRegisterRequest.getName())
-                .surname(adminRegisterRequest.getSurname())
-                .birthDate(adminRegisterRequest.getBirthDate())
-                .email(adminRegisterRequest.getEmail())
-                .build();
-
-        userServiceClient.createUser(userId, userServiceRequest);
     }
 }
