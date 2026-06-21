@@ -1,25 +1,21 @@
 package com.matvey.innowiseauthentificationservice.service;
 
-import com.matvey.innowiseauthentificationservice.client.UserServiceClient;
 import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
 import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
-import com.matvey.innowiseauthentificationservice.dto.UserServiceRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateResponse;
 import com.matvey.innowiseauthentificationservice.entity.RefreshToken;
 import com.matvey.innowiseauthentificationservice.entity.UserCredential;
-import com.matvey.innowiseauthentificationservice.mapper.UserCredentialMapper;
-import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
-import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
 import com.matvey.innowiseauthentificationservice.enums.RoleType;
 import com.matvey.innowiseauthentificationservice.exception.EmailAlreadyExistsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidCredentialsException;
 import com.matvey.innowiseauthentificationservice.exception.InvalidRefreshTokenException;
 import com.matvey.innowiseauthentificationservice.exception.RefreshTokenExpiredException;
 import com.matvey.innowiseauthentificationservice.exception.UserNotFoundException;
+import com.matvey.innowiseauthentificationservice.mapper.UserCredentialMapper;
+import com.matvey.innowiseauthentificationservice.repository.RefreshTokenRepository;
+import com.matvey.innowiseauthentificationservice.repository.UserCredentialRepository;
 import com.matvey.innowiseauthentificationservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -42,28 +38,6 @@ public class AuthService {
     private final UserCredentialMapper userCredentialMapper;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
-    private final UserServiceClient userServiceClient;
-
-    @Transactional
-    public void register(RegisterRequest registerRequest, UUID userId) {
-        if (userCredentialRepository.existsByEmail(registerRequest.getEmail())) {
-            throw new EmailAlreadyExistsException("Email already exists: " + registerRequest.getEmail());
-        }
-
-        UserCredential userCredential = userCredentialMapper.toEntity(registerRequest, userId);
-        userCredential.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
-        userCredential.setRole(RoleType.USER);
-        userCredentialRepository.save(userCredential);
-
-        UserServiceRequest userServiceRequest = UserServiceRequest.builder()
-                .name(registerRequest.getName())
-                .surname(registerRequest.getSurname())
-                .birthDate(registerRequest.getBirthDate())
-                .email(registerRequest.getEmail())
-                .build();
-
-        userServiceClient.createUser(userId, userServiceRequest);
-    }
 
     @Transactional
     public AuthResponse login(LoginRequest loginRequest) {
@@ -82,22 +56,6 @@ public class AuthService {
         saveRefreshToken(userCredential.getUserId(), refreshToken);
 
         return new AuthResponse(accessToken, refreshToken);
-    }
-
-    public ValidateResponse validate(ValidateRequest validateRequest) {
-        if (!jwtUtil.validateToken(validateRequest.getToken())) {
-            return new ValidateResponse(false, null, null);
-        }
-
-        String tokenType = jwtUtil.extractTokenType(validateRequest.getToken());
-        if ("refresh".equals(tokenType)) {
-            return new ValidateResponse(false, null, null);
-        }
-
-        UUID userId = jwtUtil.extractUserId(validateRequest.getToken());
-        String role = jwtUtil.extractRole(validateRequest.getToken());
-
-        return new ValidateResponse(true, userId.toString(), role);
     }
 
     @Transactional
@@ -144,25 +102,32 @@ public class AuthService {
     }
 
     @Transactional
-    public void registerAdmin(AdminRegisterRequest adminRegisterRequest, UUID userId) {
-        if (userCredentialRepository.existsByEmail(adminRegisterRequest.getEmail())) {
-            throw new EmailAlreadyExistsException("Email already exists: " + adminRegisterRequest.getEmail());
+    public void createCredentials(RegisterRequest request, UUID userId) {
+        if (userCredentialRepository.existsByEmail(request.getEmail())) {
+            throw new EmailAlreadyExistsException("Email already exists: " + request.getEmail());
         }
+        UserCredential userCredential = userCredentialMapper.toEntity(request, userId);
+        userCredential.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        userCredential.setRole(RoleType.USER);
+        userCredentialRepository.save(userCredential);
+    }
 
+    @Transactional
+    public void createAdminCredentials(AdminRegisterRequest request, UUID userId) {
+        if (userCredentialRepository.existsByEmail(request.getEmail())) {
+            throw new EmailAlreadyExistsException("Email already exists: " + request.getEmail());
+        }
         UserCredential userCredential = new UserCredential();
         userCredential.setUserId(userId);
-        userCredential.setEmail(adminRegisterRequest.getEmail());
-        userCredential.setPasswordHash(passwordEncoder.encode(adminRegisterRequest.getPassword()));
-        userCredential.setRole(adminRegisterRequest.getRole());
+        userCredential.setEmail(request.getEmail());
+        userCredential.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        userCredential.setRole(request.getRole());
         userCredentialRepository.save(userCredential);
+    }
 
-        UserServiceRequest userServiceRequest = UserServiceRequest.builder()
-                .name(adminRegisterRequest.getName())
-                .surname(adminRegisterRequest.getSurname())
-                .birthDate(adminRegisterRequest.getBirthDate())
-                .email(adminRegisterRequest.getEmail())
-                .build();
-
-        userServiceClient.createUser(userId, userServiceRequest);
+    @Transactional
+    public void deleteByUserId(UUID userId) {
+        userCredentialRepository.deleteByUserId(userId);
+        refreshTokenRepository.deleteByUserId(userId);
     }
 }

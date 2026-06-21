@@ -1,25 +1,17 @@
 package com.matvey.innowiseauthentificationservice.controller;
 
-import com.matvey.innowiseauthentificationservice.dto.AdminRegisterRequest;
 import com.matvey.innowiseauthentificationservice.dto.AuthResponse;
 import com.matvey.innowiseauthentificationservice.dto.LoginRequest;
 import com.matvey.innowiseauthentificationservice.dto.PublicKeyResponse;
 import com.matvey.innowiseauthentificationservice.dto.RefreshRequest;
-import com.matvey.innowiseauthentificationservice.dto.RegisterRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateRequest;
-import com.matvey.innowiseauthentificationservice.dto.ValidateResponse;
 import com.matvey.innowiseauthentificationservice.service.AuthService;
 import com.matvey.innowiseauthentificationservice.util.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -30,27 +22,11 @@ public class AuthController {
     private final AuthService authService;
     private final JwtUtil jwtUtil;
 
-    @PostMapping("/register/{userId}")
-    @Operation(summary = "Register user credentials")
-    public ResponseEntity<Void> register(
-            @PathVariable UUID userId,
-            @Valid @RequestBody RegisterRequest registerRequest) {
-        authService.register(registerRequest, userId);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
-    }
-
     @PostMapping("/login")
     @Operation(summary = "Login and get JWT tokens")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse authResponse = authService.login(loginRequest);
         return ResponseEntity.ok(authResponse);
-    }
-
-    @PostMapping("/validate")
-    @Operation(summary = "Validate JWT token")
-    public ResponseEntity<ValidateResponse> validate(@Valid @RequestBody ValidateRequest validateRequest) {
-        ValidateResponse validateResponse = authService.validate(validateRequest);
-        return ResponseEntity.ok(validateResponse);
     }
 
     @PostMapping("/refresh")
@@ -69,15 +45,5 @@ public class AuthController {
                 .algorithm("RS256")
                 .build();
         return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/admin/register/{userId}")
-    @Operation(summary = "Register admin user credentials")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> registerAdmin(
-            @PathVariable UUID userId,
-            @Valid @RequestBody AdminRegisterRequest adminRegisterRequest) {
-        authService.registerAdmin(adminRegisterRequest, userId);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 }
